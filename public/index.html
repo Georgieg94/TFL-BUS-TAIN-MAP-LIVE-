@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>TfL Live Bus & Train Map</title>
+
+    <link
+        rel="stylesheet"
+        href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    />
+
+    <link rel="stylesheet" href="/style.css">
+</head>
+
+<body>
+
+    <header>
+        <div>
+            <h1>TfL Live Network</h1>
+            <p id="status">Connecting to live vehicles...</p>
+        </div>
+
+        <div class="stats">
+            <strong id="vehicleCount">0</strong>
+            <span>live buses</span>
+        </div>
+    </header>
+
+<div id="routeSearchContainer">
+    <input
+        id="routeSearch"
+        type="text"
+        placeholder="Search route (e.g. 127)"
+        autocomplete="off"
+    >
+    <button id="clearRouteSearch" type="button">Clear</button>
+</div>   
+
+<div id="busDetails" class="bus-details" hidden>
+    <div class="bus-details-header">
+        <strong id="busDetailsRoute">Bus</strong>
+        <button id="closeBusDetails" type="button">×</button>
+    </div>
+
+    <div class="bus-details-body">
+        <div><span>Vehicle</span><strong id="busDetailsVehicle">—</strong></div>
+        <div><span>Destination</span><strong id="busDetailsDestination">—</strong></div>
+        <div><span>Direction</span><strong id="busDetailsDirection">—</strong></div>
+        <div><span>Operator</span><strong id="busDetailsOperator">—</strong></div>
+        <div><span>Updated</span><strong id="busDetailsUpdated">—</strong></div>
+    </div>
+</div>
+ 
+<div id="map"></div>
+
+    <div id="loading">
+        Loading live TfL vehicles...
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"
+/>
+
+<link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"
+/>
+
+<script
+    src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js">
+</script>
+
+    <script src="/app.js"></script>
+
+</body>
+</html>
