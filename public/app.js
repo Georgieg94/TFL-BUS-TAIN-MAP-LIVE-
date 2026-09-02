@@ -7,10 +7,26 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 const tubeLayers = new Map();
 const tubeTrainMarkers = new Map();
 
-function createTubeTrainIcon() {
+function createTubeTrainIcon(lineId) {
+    const lineColours = {
+        bakerloo: '#B36305',
+        central: '#E32017',
+        circle: '#FFD300',
+        district: '#00782A',
+        'hammersmith-city': '#F3A9BB',
+        jubilee: '#A0A5A9',
+        metropolitan: '#9B0056',
+        northern: '#000000',
+        piccadilly: '#003688',
+        victoria: '#0098D4',
+        'waterloo-city': '#95CDBA'
+    };
+
+    const colour = lineColours[lineId] || '#d50000';
+
     return L.divIcon({
         className: 'tube-train-marker',
-        html: '<div class="tube-train-icon">🚇</div>',
+        html: `<div class="tube-train-icon" style="border-color: ${colour};">🚇</div>`,
         iconSize: [34, 34],
         iconAnchor: [17, 17]
     });
@@ -71,7 +87,7 @@ async function updateTubeTrains() {
                 const marker = L.marker(
                     latLng,
                     {
-                        icon: createTubeTrainIcon(),
+                        icon: createTubeTrainIcon(train.lineId),
                         title: `${train.lineName || 'Tube'} ${train.vehicleId || ''}`
                     }
                 );
