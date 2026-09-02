@@ -16,6 +16,89 @@ const parser = new XMLParser({
 
 let cachedBuses = [];
 let lastUpdate = null;
+// ==================== TUBE NETWORK ====================
+
+const tubeLines = [
+    'bakerloo',
+    'central',
+    'circle',
+    'district',
+    'hammersmith-city',
+    'jubilee',
+    'metropolitan',
+    'northern',
+    'piccadilly',
+    'victoria',
+    'waterloo-city'
+];
+
+let cachedTube = null;
+let tubeLastUpdate = null;
+
+function fetchTflJson(url) {
+    return new Promise((resolve, reject) => {
+        https.get(url, response => {
+            let data = '';
+
+            response.on('data', chunk => {
+                data += chunk;
+            });
+
+            response.on('end', () => {
+                if (response.statusCode !== 200) {
+                    return reject(
+                        new Error(`TfL returned HTTP ${response.statusCode}`)
+                    );
+                }
+
+                try {
+                    resolve(JSON.parse(data));
+                } catch (error) {
+                    reject(new Error('Invalid JSON returned by TfL'));
+                }
+            });
+        }).on('error', reject);
+    });
+}
+
+async function updateTube() {
+    try {
+        const key = process.env.TFL_APP_KEY;
+
+        if (!key) {
+            throw new Error('TFL_APP_KEY is missing');
+        }
+
+        const results = await Promise.all(
+            tubeLines.map(async lineId => {
+                const [route, status] = await Promise.all([
+                    fetchTflJson(
+                        `https://api.tfl.gov.uk/Line/${lineId}/Route/Sequence/all?app_key=${encodeURIComponent(key)}`
+                    ),
+                    fetchTflJson(
+                        `https://api.tfl.gov.uk/Line/${lineId}/Status?app_key=${encodeURIComponent(key)}`
+                    )
+                ]);
+
+                return {
+                    id: lineId,
+                    name: route.lineName,
+                    mode: 'tube',
+                    lineStrings: route.lineStrings || [],
+                    stations: route.stations || [],
+                    status: status[0]?.lineStatuses || []
+                };
+            })
+        );
+
+        cachedTube = results;
+        tubeLastUpdate = new Date().toISOString();
+
+        console.log(`Updated Tube network: ${results.length} lines`);
+    } catch (error) {
+        console.error('TfL Tube update failed:', error.message);
+    }
+}
 
 function fetchBods() {
     return new Promise((resolve, reject) => {
@@ -124,6 +207,14 @@ app.get('/', (req, res) => {
     res.send('TfL Live Bus Map is running!');
 });
 
+app.get('/api/tube', (req, res) => {
+    res.json({
+        updatedAt: tubeLastUpdate,
+        count: cachedTube ? cachedTube.length : 0,
+        lines: cachedTube || []
+    });
+});
+
 app.get('/api/bods/status', (req, res) => {
     res.json({
         status: 'online',
@@ -144,6 +235,7 @@ app.listen(PORT, async () => {
     console.log(`Server running on port ${PORT}`);
 
     await updateBuses();
-
+    await updateTube();
     setInterval(updateBuses, 15000);
+    setInterval(updateTube, 60000);
 });

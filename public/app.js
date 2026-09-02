@@ -4,6 +4,62 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; OpenStreetMap contributors'
 }).addTo(map);
 
+const tubeLayers = new Map();
+
+async function updateTube() {
+    try {
+        const response = await fetch('/api/tube');
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+        const lines = data.lines || [];
+
+        for (const line of lines) {
+            if (!line.lineStrings) continue;
+
+            let coordinates = [];
+
+            for (const lineString of line.lineStrings) {
+                try {
+                    const parsed = typeof lineString === 'string'
+                        ? JSON.parse(lineString)
+                        : lineString;
+
+                    if (Array.isArray(parsed)) {
+                        coordinates.push(...(Array.isArray(parsed[0]) && Array.isArray(parsed[0][0]) ? parsed[0] : parsed));
+                    }
+                } catch (error) {
+                    console.error(`Unable to parse ${line.name} geometry`, error);
+                }
+            }
+
+            if (!coordinates.length) continue;
+
+            const latLngs = coordinates
+                .filter(point => Array.isArray(point) && point.length >= 2)
+                .map(point => [point[1], point[0]]);
+
+            if (!latLngs.length) continue;
+
+            if (tubeLayers.has(line.id)) {
+                tubeLayers.get(line.id).setLatLngs(latLngs);
+            } else {
+                const layer = L.polyline(latLngs, {
+                    weight: 4,
+                    opacity: 0.85
+                }).addTo(map);
+
+                tubeLayers.set(line.id, layer);
+            }
+        }
+    } catch (error) {
+        console.error('Unable to update Tube network:', error);
+    }
+}
+
 const busMarkers = new Map();
 
 const busCluster = L.markerClusterGroup({
@@ -105,6 +161,9 @@ busCluster.addLayer(marker);
 updateBuses();
 
 setInterval(updateBuses, 15000);
+
+updateTube();
+setInterval(updateTube, 60000);
 
 const routeSearch = document.getElementById('routeSearch');
 const clearRouteSearch = document.getElementById('clearRouteSearch');
