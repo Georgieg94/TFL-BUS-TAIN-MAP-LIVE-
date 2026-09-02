@@ -5,6 +5,19 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 }).addTo(map);
 
 const tubeLayers = new Map();
+const tubeLineColours = {
+    bakerloo: '#B36305',
+    central: '#E32017',
+    circle: '#FFD300',
+    district: '#00782A',
+    'hammersmith-city': '#F3A9BB',
+    jubilee: '#A0A5A9',
+    metropolitan: '#9B0056',
+    northern: '#000000',
+    piccadilly: '#003688',
+    victoria: '#0098D4',
+    'waterloo-city': '#95CDBA'
+};
 const tubeTrainMarkers = new Map();
 
 function createTubeTrainIcon(lineId) {
@@ -165,19 +178,23 @@ async function updateTube() {
                 .map(point => [point[1], point[0]]);
 
             if (!latLngs.length) continue;
-
-            if (tubeLayers.has(line.id)) {
-                const layer = tubeLayers.get(line.id);
-            layer.setLatLngs(latLngs);
+if (tubeLayers.has(line.id)) {
+    const layer = tubeLayers.get(line.id);
+    layer.setLatLngs(latLngs);
+    layer.setStyle({
+        color: tubeLineColours[line.id] || '#666666',
+        weight: 4,
+        opacity: 0.85
+    });
             if (map.hasLayer(layer) === false) {
                 map.addLayer(layer);
             }
             } else {
-                const layer = L.polyline(latLngs, {
-                    weight: 4,
-                    opacity: 0.85
-                }).addTo(map);
-
+const layer = L.polyline(latLngs, {
+    color: tubeLineColours[line.id] || '#666666',
+    weight: 4,
+    opacity: 0.85
+}).addTo(map);
                 tubeLayers.set(line.id, layer);
             }
         }
