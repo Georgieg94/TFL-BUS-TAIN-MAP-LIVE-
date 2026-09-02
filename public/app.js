@@ -1,5 +1,8 @@
 const map = L.map('map').setView([51.5074, -0.1278], 10);
 
+const elizabethLineColour = '#6950A1';
+let elizabethLayer = L.featureGroup();
+
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; OpenStreetMap contributors'
 }).addTo(map);
@@ -19,6 +22,7 @@ const tubeLineColours = {
     'waterloo-city': '#95CDBA'
 };
 const tubeTrainMarkers = new Map();
+let elizabethData = null;
 
 function createTubeTrainIcon(lineId) {
     const lineColours = {
@@ -203,6 +207,69 @@ const layer = L.polyline(latLngs, {
     }
 }
 
+async function updateElizabethLine() {
+    try {
+        const response = await fetch('/api/elizabeth');
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+        elizabethData = data.line;
+
+        if (!elizabethData?.lineStrings) {
+            return;
+        }
+
+        elizabethLayer.clearLayers();
+
+        for (const lineString of elizabethData.lineStrings) {
+            try {
+                const parsed = typeof lineString === 'string'
+                    ? JSON.parse(lineString)
+                    : lineString;
+
+                const coordinates =
+                    Array.isArray(parsed[0]) &&
+                    Array.isArray(parsed[0][0])
+                        ? parsed.flat()
+                        : parsed;
+
+                const latLngs = coordinates
+                    .filter(
+                        point =>
+                            Array.isArray(point) &&
+                            point.length >= 2
+                    )
+                    .map(point => [point[1], point[0]]);
+
+                if (!latLngs.length) {
+                    continue;
+                }
+
+                const layer = L.polyline(latLngs, {
+                    color: elizabethLineColour,
+                    weight: 4,
+                    opacity: 0.9
+                });
+
+                elizabethLayer.addLayer(layer);
+            } catch (error) {
+                console.error(
+                    'Unable to parse Elizabeth line geometry',
+                    error
+                );
+            }
+        }
+    } catch (error) {
+        console.error(
+            'Unable to update Elizabeth line:',
+            error
+        );
+    }
+}
+
 const busMarkers = new Map();
 
 const busCluster = L.markerClusterGroup({
@@ -308,6 +375,9 @@ setInterval(updateBuses, 15000);
 updateTube();
 setInterval(updateTube, 60000);
 
+updateElizabethLine();
+setInterval(updateElizabethLine, 60000);
+
 updateTubeTrains();
 setInterval(updateTubeTrains, 30000);
 
@@ -353,6 +423,10 @@ function updateTransportMode() {
         selectedTransportMode === 'tube' ||
         selectedTransportMode === 'all';
 
+    const showElizabeth =
+        selectedTransportMode === 'elizabeth' ||
+        selectedTransportMode === 'all';
+
     if (showBuses) {
         if (!map.hasLayer(busCluster)) {
             map.addLayer(busCluster);
@@ -374,6 +448,18 @@ function updateTransportMode() {
             }
         }
     });
+
+if (elizabethLayer) {
+    if (showElizabeth) {
+        if (!map.hasLayer(elizabethLayer)) {
+            map.addLayer(elizabethLayer);
+        }
+    } else {
+        if (map.hasLayer(elizabethLayer)) {
+            map.removeLayer(elizabethLayer);
+        }
+    }
+}
 
         tubeTrainMarkers.forEach(marker => {
         if (showTube) {

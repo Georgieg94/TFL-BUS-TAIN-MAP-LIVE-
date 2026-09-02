@@ -16,7 +16,10 @@ const parser = new XMLParser({
 
 let cachedBuses = [];
 let lastUpdate = null;
+
 // ==================== TUBE NETWORK ====================
+
+const elizabethLine = 'elizabeth';
 
 const tubeLines = [
     'bakerloo',
@@ -34,6 +37,9 @@ const tubeLines = [
 
 let cachedTube = null;
 let tubeLastUpdate = null;
+
+let cachedElizabeth = null;
+let elizabethLastUpdate = null;
 
 function fetchTflJson(url) {
     return new Promise((resolve, reject) => {
@@ -97,6 +103,45 @@ async function updateTube() {
         console.log(`Updated Tube network: ${results.length} lines`);
     } catch (error) {
         console.error('TfL Tube update failed:', error.message);
+    }
+}
+
+async function updateElizabeth() {
+    try {
+        const key = process.env.TFL_APP_KEY;
+
+        if (!key) {
+            throw new Error('TFL_APP_KEY is missing');
+        }
+
+        const [route, status] = await Promise.all([
+            fetchTflJson(
+                `https://api.tfl.gov.uk/Line/${elizabethLine}/Route/Sequence/all?app_key=${encodeURIComponent(key)}`
+            ),
+            fetchTflJson(
+                `https://api.tfl.gov.uk/Line/${elizabethLine}/Status?app_key=${encodeURIComponent(key)}`
+            )
+        ]);
+
+        cachedElizabeth = {
+            id: elizabethLine,
+            name: route.lineName,
+            mode: 'elizabeth',
+            lineStrings: route.lineStrings || [],
+            stations: route.stations || [],
+            status: status[0]?.lineStatuses || []
+        };
+
+        elizabethLastUpdate = new Date().toISOString();
+
+        console.log(
+            `Updated Elizabeth line: ${cachedElizabeth.stations.length} stations`
+        );
+    } catch (error) {
+        console.error(
+            'Elizabeth line update failed:',
+            error.message
+        );
     }
 }
 
@@ -212,6 +257,13 @@ app.get('/api/tube', (req, res) => {
         updatedAt: tubeLastUpdate,
         count: cachedTube ? cachedTube.length : 0,
         lines: cachedTube || []
+    });
+});
+
+app.get('/api/elizabeth', (req, res) => {
+    res.json({
+        updatedAt: elizabethLastUpdate,
+        line: cachedElizabeth
     });
 });
 
@@ -676,6 +728,7 @@ app.listen(PORT, async () => {
 
     await updateBuses();
     await updateTube();
+    await updateElizabeth();
     await updateTubeTrains();
     setInterval(updateBuses, 15000);
     setInterval(updateTube, 60000);
