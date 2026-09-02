@@ -17,8 +17,25 @@ async function updateTube() {
         const data = await response.json();
         const lines = data.lines || [];
 
+    const routeFilter = (document.getElementById('routeSearch')?.value || '').trim().toLowerCase();
+    const visibleTubeIds = new Set();
+
         for (const line of lines) {
-            if (!line.lineStrings) continue;
+        const matchesSearch =
+            !routeFilter ||
+            line.name.toLowerCase().includes(routeFilter) ||
+            line.id.toLowerCase().includes(routeFilter);
+
+        if (!matchesSearch) {
+            if (tubeLayers.has(line.id)) {
+                map.removeLayer(tubeLayers.get(line.id));
+            }
+            continue;
+        }
+
+        visibleTubeIds.add(line.id);
+
+    if (!line.lineStrings) continue;
 
             let coordinates = [];
 
@@ -45,7 +62,11 @@ async function updateTube() {
             if (!latLngs.length) continue;
 
             if (tubeLayers.has(line.id)) {
-                tubeLayers.get(line.id).setLatLngs(latLngs);
+                const layer = tubeLayers.get(line.id);
+            layer.setLatLngs(latLngs);
+            if (map.hasLayer(layer) === false) {
+                map.addLayer(layer);
+            }
             } else {
                 const layer = L.polyline(latLngs, {
                     weight: 4,
@@ -169,12 +190,20 @@ const routeSearch = document.getElementById('routeSearch');
 const clearRouteSearch = document.getElementById('clearRouteSearch');
 
 routeSearch.addEventListener('input', () => {
-    updateBuses();
+    if (selectedTransportMode === 'tube') {
+        updateTube();
+    } else {
+        updateBuses();
+    }
 });
 
 clearRouteSearch.addEventListener('click', () => {
     routeSearch.value = '';
+    if (selectedTransportMode === 'tube') {
+    updateTube();
+} else {
     updateBuses();
+}
 });
 
 
@@ -183,3 +212,69 @@ const closeBusDetails = document.getElementById('closeBusDetails');
 closeBusDetails.addEventListener('click', () => {
     document.getElementById('busDetails').hidden = true;
 });
+
+// ==================== TRANSPORT MODE SELECTOR ====================
+
+let selectedTransportMode = 'bus';
+
+const transportTabs = document.querySelectorAll('.transport-tab');
+
+function updateTransportMode() {
+    const showBuses =
+        selectedTransportMode === 'bus' ||
+        selectedTransportMode === 'all';
+
+    const showTube =
+        selectedTransportMode === 'tube' ||
+        selectedTransportMode === 'all';
+
+    if (showBuses) {
+        if (!map.hasLayer(busCluster)) {
+            map.addLayer(busCluster);
+        }
+    } else {
+        if (map.hasLayer(busCluster)) {
+            map.removeLayer(busCluster);
+        }
+    }
+
+    tubeLayers.forEach(layer => {
+        if (showTube) {
+            if (!map.hasLayer(layer)) {
+                map.addLayer(layer);
+            }
+        } else {
+            if (map.hasLayer(layer)) {
+                map.removeLayer(layer);
+            }
+        }
+    });
+
+    transportTabs.forEach(tab => {
+        tab.classList.toggle(
+            'active',
+            tab.dataset.mode === selectedTransportMode
+        );
+    });
+
+    const routeSearch = document.getElementById('routeSearch');
+
+    if (selectedTransportMode === 'bus') {
+        routeSearch.placeholder = 'Search bus route (e.g. 127)';
+    } else if (selectedTransportMode === 'tube') {
+        routeSearch.placeholder = 'Search Tube line or station';
+    } else if (selectedTransportMode === 'all') {
+        routeSearch.placeholder = 'Search transport';
+    } else {
+        routeSearch.placeholder = `Search ${selectedTransportMode}`;
+    }
+}
+
+transportTabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+        selectedTransportMode = tab.dataset.mode;
+        updateTransportMode();
+    });
+});
+
+updateTransportMode();

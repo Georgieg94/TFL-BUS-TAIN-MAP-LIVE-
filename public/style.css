@@ -104,3 +104,37 @@ header p {
 
     white-space: nowrap;
 }
+
+/* Transport mode tabs */
+#transportTabs {
+    display: flex;
+    gap: 6px;
+    padding: 8px 10px;
+    background: white;
+    border-bottom: 1px solid #ddd;
+    overflow-x: auto;
+    z-index: 1000;
+}
+
+.transport-tab {
+    flex: 0 0 auto;
+    border: 1px solid #d0d7de;
+    background: #f6f8fa;
+    color: #333;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.transport-tab:hover {
+    background: #e9eef3;
+}
+
+.transport-tab.active {
+    background: #005eb8;
+    border-color: #005eb8;
+    color: white;
+}
