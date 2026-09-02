@@ -5,6 +5,95 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 }).addTo(map);
 
 const tubeLayers = new Map();
+const tubeTrainMarkers = new Map();
+
+function createTubeTrainIcon() {
+    return L.divIcon({
+        className: 'tube-train-marker',
+        html: '<div class="tube-train-icon">🚇</div>',
+        iconSize: [34, 34],
+        iconAnchor: [17, 17]
+    });
+}
+
+async function updateTubeTrains() {
+    try {
+        const response = await fetch('/api/tube-trains');
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+        const trains = data.trains || [];
+        const currentIds = new Set();
+
+        for (const train of trains) {
+            const position = train.position;
+
+            if (
+                !position ||
+                typeof position.lat !== 'number' ||
+                typeof position.lon !== 'number'
+            ) {
+                continue;
+            }
+
+            const id = `${train.lineId}-${train.vehicleId}`;
+
+            currentIds.add(id);
+
+            const latLng = [
+                position.lat,
+                position.lon
+            ];
+
+            const popup = `
+                <div class="tube-train-popup">
+                    <strong>🚇 ${train.lineName || 'Tube Line'}</strong><br>
+                    Vehicle: ${train.vehicleId || 'Unknown'}<br>
+                    Location: ${train.currentLocation || 'Unknown'}<br>
+                    Towards: ${train.towards || train.destinationName || 'Unknown'}<br>
+                    Position: ${position.positionType || 'Unknown'}
+                </div>
+            `;
+
+            if (tubeTrainMarkers.has(id)) {
+                const marker = tubeTrainMarkers.get(id);
+
+                marker.setLatLng(latLng);
+                marker.setPopupContent(popup);
+
+                if (!map.hasLayer(marker)) {
+                    marker.addTo(map);
+                }
+            } else {
+                const marker = L.marker(
+                    latLng,
+                    {
+                        icon: createTubeTrainIcon(),
+                        title: `${train.lineName || 'Tube'} ${train.vehicleId || ''}`
+                    }
+                );
+
+                marker.bindPopup(popup);
+                marker.addTo(map);
+
+                tubeTrainMarkers.set(id, marker);
+            }
+        }
+
+        for (const [id, marker] of tubeTrainMarkers) {
+            if (!currentIds.has(id)) {
+                map.removeLayer(marker);
+                tubeTrainMarkers.delete(id);
+            }
+        }
+    } catch (error) {
+        console.error('Unable to update live Tube trains:', error);
+    }
+}
+
 
 async function updateTube() {
     try {
@@ -186,6 +275,9 @@ setInterval(updateBuses, 15000);
 updateTube();
 setInterval(updateTube, 60000);
 
+updateTubeTrains();
+setInterval(updateTubeTrains, 30000);
+
 const routeSearch = document.getElementById('routeSearch');
 const clearRouteSearch = document.getElementById('clearRouteSearch');
 
@@ -250,7 +342,19 @@ function updateTransportMode() {
         }
     });
 
-    transportTabs.forEach(tab => {
+        tubeTrainMarkers.forEach(marker => {
+        if (showTube) {
+            if (!map.hasLayer(marker)) {
+                map.addLayer(marker);
+            }
+        } else {
+            if (map.hasLayer(marker)) {
+                map.removeLayer(marker);
+            }
+        }
+    });
+
+transportTabs.forEach(tab => {
         tab.classList.toggle(
             'active',
             tab.dataset.mode === selectedTransportMode
