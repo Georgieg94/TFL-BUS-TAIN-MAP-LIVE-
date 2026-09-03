@@ -372,6 +372,137 @@ const busCluster = L.markerClusterGroup({
     showCoverageOnHover: false
 });
 
+const busRouteSelect = document.getElementById("busRouteSelect");
+let selectedBusRoute = "";
+let selectedBusRouteLayer = null;
+let selectedBusRoutePaths = [];
+
+function distanceToSegmentMeters(point, start, end) {
+    const latScale = 111320;
+    const lonScale = 111320 * Math.cos((point.lat * Math.PI) / 180);
+    const px = point.lng * lonScale;
+    const py = point.lat * latScale;
+    const ax = start[1] * lonScale;
+    const ay = start[0] * latScale;
+    const bx = end[1] * lonScale;
+    const by = end[0] * latScale;
+
+    const dx = bx - ax;
+    const dy = by - ay;
+    const lengthSquared = dx * dx + dy * dy;
+
+    if (lengthSquared === 0) {
+        return Math.hypot(px - ax, py - ay);
+    }
+
+    const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lengthSquared));
+    const closestX = ax + t * dx;
+    const closestY = ay + t * dy;
+
+    return Math.hypot(px - closestX, py - closestY);
+}
+
+function isBusWithinSelectedRoute(bus) {
+    if (!selectedBusRoute || !selectedBusRoutePaths.length) return true;
+
+    const point = {
+        lat: Number(bus.latitude),
+        lng: Number(bus.longitude)
+    };
+
+    if (!Number.isFinite(point.lat) || !Number.isFinite(point.lng)) return false;
+
+    let nearestDistance = Infinity;
+
+    for (const path of selectedBusRoutePaths) {
+        for (let i = 1; i < path.length; i++) {
+            const distance = distanceToSegmentMeters(point, path[i - 1], path[i]);
+            if (distance < nearestDistance) nearestDistance = distance;
+            if (nearestDistance <= 300) return true;
+        }
+    }
+
+    return nearestDistance <= 300;
+}
+
+function updateBusMarkerVisibility() {
+    const showBuses = typeof selectedLayers !== "undefined" && selectedLayers.has("bus");
+
+    for (const marker of busMarkers.values()) {
+        const route = marker.options.busRoute || "";
+        const position = marker.getLatLng();
+        const shouldShow =
+            showBuses &&
+            (!selectedBusRoute ||
+             (route === selectedBusRoute &&
+              isBusWithinSelectedRoute({
+                  latitude: position.lat,
+                  longitude: position.lng
+              })));
+
+        if (shouldShow) {
+            if (!busCluster.hasLayer(marker)) busCluster.addLayer(marker);
+        } else {
+            if (busCluster.hasLayer(marker)) busCluster.removeLayer(marker);
+        }
+    }
+}
+
+async function updateBusRouteLine() {
+    if (selectedBusRouteLayer) {
+        map.removeLayer(selectedBusRouteLayer);
+        selectedBusRouteLayer = null;
+    }
+
+    if (!selectedBusRoute) return;
+
+    try {
+        const response = await fetch(`/api/bus-route/${encodeURIComponent(selectedBusRoute)}`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+        const data = await response.json();
+        const routeLayers = [];
+        selectedBusRoutePaths = [];
+
+        for (const lineString of data.lineStrings || []) {
+            try {
+                const parsed = typeof lineString === "string" ? JSON.parse(lineString) : lineString;
+                const coordinates = Array.isArray(parsed) && Array.isArray(parsed[0]) && Array.isArray(parsed[0][0])
+                    ? parsed[0]
+                    : parsed;
+
+                const latLngs = (coordinates || [])
+                    .filter(point => Array.isArray(point) && point.length >= 2)
+                    .map(point => [point[1], point[0]]);
+
+                selectedBusRoutePaths.push(latLngs);
+                if (!latLngs.length) continue;
+
+                routeLayers.push(L.polyline(latLngs, {
+                    color: "#ff0000",
+                    weight: 5,
+                    opacity: 0.9
+                }));
+            } catch (error) {
+                console.error("Unable to parse Bus route geometry", error);
+            }
+        }
+
+        if (!routeLayers.length) return;
+
+        selectedBusRouteLayer = L.layerGroup(routeLayers).addTo(map);
+          updateBusMarkerVisibility();
+    } catch (error) {
+        console.error("Unable to update Bus route line:", error);
+    }
+}
+
+busRouteSelect.addEventListener("change", () => {
+    selectedBusRoute = busRouteSelect.value;
+    updateBusMarkerVisibility();
+    updateBusRouteLine();
+});
+
 async function updateBuses() {
     try {
         const response = await fetch('/api/live-buses');
@@ -388,6 +519,17 @@ const buses = data.buses || [];
             `Live TfL buses • Updated ${new Date().toLocaleTimeString()}`;
 
         document.getElementById('loading').style.display = 'none';
+          const availableBusRoutes = [...new Set(buses.map(bus => String(bus.route || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+          const currentRoute = busRouteSelect.value;
+          busRouteSelect.innerHTML = '<option value="">All bus routes</option>';
+          availableBusRoutes.forEach(route => {
+              const option = document.createElement("option");
+              option.value = route;
+              option.textContent = route;
+              busRouteSelect.appendChild(option);
+          });
+          if (availableBusRoutes.includes(currentRoute)) busRouteSelect.value = currentRoute;
+
 
 const currentIds = new Set();
 
@@ -413,6 +555,7 @@ const currentIds = new Set();
             if (busMarkers.has(id)) {
                 const marker = busMarkers.get(id);
                 marker.setLatLng(position);
+                  marker.options.busRoute = String(bus.route || "").trim();
                 marker.setPopupContent(popup);
             } else {
                 const busIcon = L.divIcon({
@@ -426,6 +569,7 @@ const currentIds = new Set();
 const marker = L.marker(position, {
     icon: busIcon
 }).bindPopup(popup);
+  marker.options.busRoute = String(bus.route || "").trim();
 
 marker.on('click', () => {
     document.getElementById('busDetails').hidden = false;
@@ -437,7 +581,7 @@ marker.on('click', () => {
     document.getElementById('busDetailsUpdated').textContent = new Date().toLocaleTimeString();
 });
 
-busCluster.addLayer(marker);
+  if (selectedLayers.has("bus") && (!selectedBusRoute || marker.options.busRoute === selectedBusRoute)) busCluster.addLayer(marker);
 
                 busMarkers.set(id, marker);
             }
@@ -450,6 +594,7 @@ busCluster.addLayer(marker);
             }
         }
 
+          updateBusMarkerVisibility();
     } catch (error) {
         console.error('Unable to update buses:', error);
 
@@ -493,6 +638,10 @@ function updateNetworkLayers() {
     const showTube = selectedLayers.has('tube');
     const showElizabeth = selectedLayers.has('elizabeth');
 
+      document.getElementById('busRouteFilter').hidden = !showBuses;
+      document.getElementById('tubeLineFilter').hidden = !showTube;
+      document.getElementById('elizabethLineFilter').hidden = !showElizabeth;
+
     if (showBuses) {
         if (!map.hasLayer(busCluster)) {
             map.addLayer(busCluster);
@@ -502,6 +651,16 @@ function updateNetworkLayers() {
             map.removeLayer(busCluster);
         }
     }
+      updateBusMarkerVisibility();
+
+      if (!showBuses) {
+          if (selectedBusRouteLayer) {
+              map.removeLayer(selectedBusRouteLayer);
+              selectedBusRouteLayer = null;
+          }
+      } else if (selectedBusRoute) {
+          updateBusRouteLine();
+      }
 
     tubeLayers.forEach(layer => {
         if (showTube) {

@@ -1197,6 +1197,33 @@ app.get('/api/bods/status', (req, res) => {
     });
 });
 
+  app.get("/api/bus-route/:route", async (req, res) => {
+      try {
+          const route = String(req.params.route || "").trim();
+          const key = process.env.TFL_APP_KEY;
+
+          if (!route) {
+              return res.status(400).json({ error: "Bus route is required" });
+          }
+
+          if (!key) {
+              throw new Error("TFL_APP_KEY is missing");
+          }
+
+          const data = await fetchTflJson(
+              `https://api.tfl.gov.uk/Line/${encodeURIComponent(route)}/Route/Sequence/all?app_key=${encodeURIComponent(key)}`
+          );
+
+          res.json({
+              route,
+              lineStrings: data.lineStrings || [], stations: data.stations || [], stopPointSequences: data.stopPointSequences || []
+          });
+      } catch (error) {
+          console.error("Unable to fetch Bus route geometry:", error.message);
+          res.status(500).json({ error: "Unable to fetch Bus route geometry" });
+      }
+  });
+
 app.get('/api/live-buses', (req, res) => {
     res.json({
         updatedAt: lastUpdate,

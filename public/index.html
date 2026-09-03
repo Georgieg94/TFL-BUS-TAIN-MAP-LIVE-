@@ -100,15 +100,44 @@
     </div>
 </div>
  
-<div id="map">
-    <div id="mapControls">
-        <button id="changeNetwork" type="button">🏠 Change Network</button>
-    </div>
-</div>
+<main id="networkView">
+    <div id="networkToolbar">
+        <div id="networkFilters">
+            <label id="busRouteFilter" class="network-filter" hidden>
+                <span>🚌 Bus route</span>
+                <select id="busRouteSelect">
+                    <option value="">All bus routes</option>
+                </select>
+            </label>
 
-    <div id="loading">
-        Loading live TfL vehicles...
+            <label id="tubeLineFilter" class="network-filter" hidden>
+                <span>🚇 Tube line</span>
+                <select id="tubeLineSelect">
+                    <option value="">All Tube lines</option>
+                </select>
+            </label>
+
+            <label id="elizabethLineFilter" class="network-filter" hidden>
+                <span>🟣 Elizabeth line</span>
+                <select id="elizabethLineSelect">
+                    <option value="">All Elizabeth line</option>
+                </select>
+            </label>
+
+            <div id="mapControls">
+                <button id="changeNetwork" type="button">🏠 Change Network</button>
+            </div>
+        </div>
     </div>
+
+    <div id="mapShell">
+        <div id="map"></div>
+
+        <div id="loading">
+            Loading live TfL vehicles...
+        </div>
+    </div>
+</main>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <link

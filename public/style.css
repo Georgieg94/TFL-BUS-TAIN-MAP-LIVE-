@@ -337,3 +337,281 @@ header p {
 #changeNetwork:hover {
     background: #f3f4f6;
 }
+
+
+/* ==================== NETWORK FILTERS ==================== */
+
+#networkFilters {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    z-index: 1000;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.network-filter {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    background: #ffffff;
+    border-radius: 9px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    font-size: 12px;
+    font-weight: 700;
+    color: #1f2933;
+}
+
+.network-filter select {
+    border: 1px solid #d0d7de;
+    border-radius: 6px;
+    background: #ffffff;
+    color: #1f2933;
+    padding: 5px 28px 5px 8px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.network-filter select:focus {
+    outline: 2px solid #005eb8;
+    outline-offset: 1px;
+}
+
+@media (max-width: 600px) {
+    #networkFilters {
+        top: 10px;
+        left: 10px;
+        right: 10px;
+    }
+
+    .network-filter {
+        width: 100%;
+    }
+
+    .network-filter select {
+        flex: 1;
+        min-width: 0;
+    }
+}
+
+/* ==================== RESPONSIVE APP LAYOUT ==================== */
+
+html,
+body {
+    min-height: 100%;
+    background: #eef2f6;
+}
+
+body {
+    min-height: 100vh;
+    overflow-x: hidden;
+}
+
+#networkView {
+    width: min(1500px, calc(100% - 32px));
+    flex: 1;
+    min-height: 0;
+    margin: 0 auto;
+    padding: 16px 0 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+#networkToolbar {
+    width: 100%;
+    flex: 0 0 auto;
+}
+
+#networkFilters {
+    position: static;
+    width: 100%;
+    min-height: 58px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 10px;
+    background: #ffffff;
+    border: 1px solid #d9e0e7;
+    border-radius: 12px;
+    box-shadow: 0 3px 12px rgba(0, 0, 0, 0.08);
+}
+
+.network-filter {
+    position: static;
+    flex: 1 1 220px;
+    min-width: 190px;
+    box-shadow: none;
+    border: 1px solid #e1e6eb;
+    border-radius: 8px;
+    padding: 8px 10px;
+}
+
+#mapControls {
+    position: static;
+    flex: 0 0 auto;
+    margin-left: auto;
+}
+
+#changeNetwork {
+    box-shadow: none;
+    border: 1px solid #d0d7de;
+}
+
+#mapShell {
+    position: relative;
+    flex: 1;
+    min-height: 420px;
+    width: 100%;
+    overflow: hidden;
+    border: 1px solid #d9e0e7;
+    border-radius: 14px;
+    background: #ffffff;
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.10);
+}
+
+#map {
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+}
+
+#loading {
+    position: absolute;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1000;
+}
+
+/* Keep Leaflet controls neatly inside the map panel. */
+#mapShell .leaflet-top,
+#mapShell .leaflet-bottom {
+    z-index: 900;
+}
+
+/* ==================== TABLET ==================== */
+
+@media (max-width: 900px) {
+    #networkView {
+        width: min(100% - 24px, 1200px);
+        padding-top: 12px;
+    }
+
+    #networkFilters {
+        align-items: stretch;
+    }
+
+    .network-filter {
+        flex: 1 1 calc(50% - 10px);
+    }
+
+    #mapControls {
+        margin-left: 0;
+    }
+}
+
+/* ==================== MOBILE ==================== */
+
+@media (max-width: 600px) {
+    header {
+        height: auto;
+        min-height: 72px;
+        padding: 10px 14px;
+    }
+
+    header h1 {
+        font-size: 20px;
+    }
+
+    header p {
+        font-size: 12px;
+    }
+
+    .stats strong {
+        font-size: 23px;
+    }
+
+    .stats span {
+        font-size: 10px;
+    }
+
+    #networkView {
+        width: calc(100% - 16px);
+        padding: 8px 0 16px;
+        gap: 8px;
+    }
+
+    #networkFilters {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+        padding: 8px;
+        border-radius: 10px;
+    }
+
+    .network-filter {
+        width: 100%;
+        min-width: 0;
+        flex: 0 0 auto;
+    }
+
+    .network-filter select {
+        width: 100%;
+        min-width: 0;
+    }
+
+    #mapControls {
+        width: 100%;
+    }
+
+    #changeNetwork {
+        width: 100%;
+    }
+
+    #mapShell {
+        min-height: 0;
+        height: min(68vh, 650px);
+        border-radius: 10px;
+    }
+
+    #loading {
+        max-width: calc(100% - 24px);
+        white-space: nowrap;
+        font-size: 12px;
+        padding: 8px 12px;
+    }
+}
+
+/* ==================== SMALL PHONES ==================== */
+
+@media (max-width: 380px) {
+    header h1 {
+        font-size: 18px;
+    }
+
+    header p {
+        font-size: 11px;
+    }
+
+    .stats strong {
+        font-size: 20px;
+    }
+
+    #networkView {
+        width: calc(100% - 12px);
+    }
+
+    #mapShell {
+        height: 64vh;
+    }
+}
+
+/* Respect the HTML hidden attribute for contextual filters. */
+.network-filter[hidden] {
+    display: none;
+}
