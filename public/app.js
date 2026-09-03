@@ -22,6 +22,7 @@ const tubeLineColours = {
     'waterloo-city': '#95CDBA'
 };
 const tubeTrainMarkers = new Map();
+const elizabethTrainMarkers = new Map();
 let elizabethData = null;
 
 function createTubeTrainIcon(lineId) {
@@ -47,6 +48,95 @@ function createTubeTrainIcon(lineId) {
         iconSize: [34, 34],
         iconAnchor: [17, 17]
     });
+}
+
+function createElizabethTrainIcon() {
+    return L.divIcon({
+        className: 'tube-train-marker',
+        html: `<div class="tube-train-icon" style="border-color: ${elizabethLineColour};">🚇</div>`,
+        iconSize: [34, 34],
+        iconAnchor: [17, 17]
+    });
+}
+
+async function updateElizabethTrains() {
+    try {
+        const response = await fetch('/api/elizabeth-trains');
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+        const trains = data.trains || [];
+        const currentIds = new Set();
+
+        for (const train of trains) {
+            const position = train.position;
+
+            if (
+                !position ||
+                typeof position.lat !== 'number' ||
+                typeof position.lon !== 'number'
+            ) {
+                continue;
+            }
+
+            const id = `elizabeth-${train.vehicleId}`;
+
+            currentIds.add(id);
+
+            const latLng = [
+                position.lat,
+                position.lon
+            ];
+
+            const prediction = train.predictions?.[0];
+
+            const popup = `
+                <div class="tube-train-popup">
+                    <strong>🟣 Elizabeth line</strong><br>
+                    Vehicle: ${train.vehicleId || 'Unknown'}<br>
+                    Location: ${prediction?.stationName || 'Unknown'}<br>
+                    Towards: ${prediction?.destinationName || 'Unknown'}<br>
+                    Position: ${position.positionType || 'Unknown'}
+                </div>
+            `;
+
+            if (elizabethTrainMarkers.has(id)) {
+                const marker = elizabethTrainMarkers.get(id);
+
+                marker.setLatLng(latLng);
+                marker.setPopupContent(popup);
+
+                if (!map.hasLayer(marker)) {
+                    marker.addTo(map);
+                }
+            } else {
+                const marker = L.marker(
+                    latLng,
+                    {
+                        icon: createElizabethTrainIcon(),
+                        title: `Elizabeth ${train.vehicleId || ''}`
+                    }
+                );
+
+                marker.bindPopup(popup);
+                marker.addTo(map);
+
+                elizabethTrainMarkers.set(id, marker);
+            }
+        }
+
+        for (const [id, marker] of elizabethTrainMarkers) {
+            if (!currentIds.has(id)) {
+                map.removeLayer(marker);
+                elizabethTrainMarkers.delete(id);
+            }
+        }
+    } catch (error) {
+        console.error('Unable to update live Elizabeth trains:', error);
+    }
 }
 
 async function updateTubeTrains() {
@@ -381,6 +471,9 @@ setInterval(updateElizabethLine, 60000);
 updateTubeTrains();
 setInterval(updateTubeTrains, 30000);
 
+updateElizabethTrains();
+setInterval(updateElizabethTrains, 30000);
+
 const routeSearch = document.getElementById('routeSearch');
 const clearRouteSearch = document.getElementById('clearRouteSearch');
 
@@ -472,6 +565,19 @@ if (elizabethLayer) {
             }
         }
     });
+
+    elizabethTrainMarkers.forEach(marker => {
+        if (showElizabeth) {
+            if (!map.hasLayer(marker)) {
+                map.addLayer(marker);
+            }
+        } else {
+            if (map.hasLayer(marker)) {
+                map.removeLayer(marker);
+            }
+        }
+    });
+
 
 transportTabs.forEach(tab => {
         tab.classList.toggle(

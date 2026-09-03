@@ -610,6 +610,488 @@ function addTrainPositions(trains) {
     });
 }
 
+
+
+function getElizabethLine() {
+    return cachedElizabeth || null;
+}
+
+function getElizabethRouteVariants() {
+    const line = getElizabethLine();
+
+    if (!line) {
+        return [];
+    }
+
+    const stations = getStationLookup(line);
+    const variants = [];
+
+    for (const lineString of line.lineStrings || []) {
+        const points = parseLineString(lineString);
+
+        if (!points || points.length < 2) {
+            continue;
+        }
+
+        const stationMatches = [];
+
+        for (let i = 0; i < points.length; i++) {
+            let bestStation = null;
+            let bestDistance = Infinity;
+
+            for (const station of line.stations || []) {
+                const dx = points[i][0] - station.lon;
+                const dy = points[i][1] - station.lat;
+                const distance = dx * dx + dy * dy;
+
+                if (distance < bestDistance) {
+                    bestDistance = distance;
+                    bestStation = station;
+                }
+            }
+
+            if (
+                bestStation &&
+                bestDistance <= 0.01
+            ) {
+                const key =
+                    normaliseStationName(bestStation.name);
+
+                if (
+                    !stationMatches.length ||
+                    stationMatches[stationMatches.length - 1].key !== key
+                ) {
+                    stationMatches.push({
+                        key,
+                        station: bestStation,
+                        pointIndex: i
+                    });
+                }
+            }
+        }
+
+        if (stationMatches.length < 2) {
+            continue;
+        }
+
+        variants.push({
+            points,
+            stations: stationMatches
+        });
+    }
+
+    return variants;
+}
+
+function findElizabethRouteForTrain(
+    train,
+    uniquePredictions,
+    variants
+) {
+    const destinationKey =
+        normaliseStationName(
+            train.predictions?.[0]?.destinationName || ''
+        );
+
+    const predictedKeys =
+        new Set(
+            uniquePredictions.map(
+                prediction => prediction.stationKey
+            )
+        );
+
+    let bestVariant = null;
+    let bestScore = -Infinity;
+
+    for (const variant of variants) {
+        const routeKeys =
+            new Set(
+                variant.stations.map(
+                    station => station.key
+                )
+            );
+
+        let score = 0;
+
+        if (
+            destinationKey &&
+            routeKeys.has(destinationKey)
+        ) {
+            score += 100;
+        }
+
+        for (const key of predictedKeys) {
+            if (routeKeys.has(key)) {
+                score += 10;
+            }
+        }
+
+        if (score > bestScore) {
+            bestScore = score;
+            bestVariant = variant;
+        }
+    }
+
+    return bestVariant;
+}
+
+function getElizabethTrainPosition(train) {
+    const line = getElizabethLine();
+
+    if (!line) {
+        return null;
+    }
+
+    const predictions = Array.isArray(train.predictions)
+        ? train.predictions
+        : [];
+
+    if (predictions.length === 0) {
+        return null;
+    }
+
+    const stations = getStationLookup(line);
+
+    /*
+     * Collapse TfL's duplicate names for the same physical
+     * station, keeping the earliest prediction.
+     */
+    const predictionByStation = new Map();
+
+    for (const prediction of predictions) {
+        const stationKey =
+            normaliseStationName(
+                prediction.stationName || ''
+            );
+
+        if (!stationKey) {
+            continue;
+        }
+
+        const station = stations.get(stationKey);
+
+        if (!station) {
+            continue;
+        }
+
+        const timeToStation =
+            Number(prediction.timeToStation);
+
+        if (!Number.isFinite(timeToStation)) {
+            continue;
+        }
+
+        const existing =
+            predictionByStation.get(stationKey);
+
+        if (
+            !existing ||
+            timeToStation < existing.timeToStation
+        ) {
+            predictionByStation.set(
+                stationKey,
+                {
+                    ...prediction,
+                    station,
+                    stationKey,
+                    timeToStation
+                }
+            );
+        }
+    }
+
+    const uniquePredictions =
+        Array.from(
+            predictionByStation.values()
+        ).sort(
+            (a, b) =>
+                a.timeToStation -
+                b.timeToStation
+        );
+
+    if (!uniquePredictions.length) {
+        return null;
+    }
+
+    const variants =
+        getElizabethRouteVariants();
+
+    if (!variants.length) {
+        return null;
+    }
+
+    const route =
+        findElizabethRouteForTrain(
+            train,
+            uniquePredictions,
+            variants
+        );
+
+    if (!route) {
+        return null;
+    }
+
+    const routeIndex = new Map();
+
+    route.stations.forEach(
+        (station, index) => {
+            routeIndex.set(
+                station.key,
+                {
+                    ...station,
+                    routeIndex: index
+                }
+            );
+        }
+    );
+
+    const nextPrediction =
+        uniquePredictions[0];
+
+    const nextRouteStation =
+        routeIndex.get(
+            nextPrediction.stationKey
+        );
+
+    if (!nextRouteStation) {
+        return null;
+    }
+
+    /*
+     * A terminal prediction with no meaningful following
+     * station is safest represented at the terminal.
+     */
+    if (uniquePredictions.length === 1) {
+        return {
+            lat: nextPrediction.station.lat,
+            lon: nextPrediction.station.lon,
+            positionType: 'station',
+            station: nextPrediction.station.name
+        };
+    }
+
+    /*
+     * Find the next predicted station that occurs after
+     * the current predicted station on this specific route.
+     */
+    let followingPrediction = null;
+
+    for (const prediction of uniquePredictions.slice(1)) {
+        const candidate =
+            routeIndex.get(
+                prediction.stationKey
+            );
+
+        if (
+            candidate &&
+            candidate.routeIndex >
+                nextRouteStation.routeIndex
+        ) {
+            followingPrediction = prediction;
+            break;
+        }
+    }
+
+    /*
+     * If the train is at/near a station, use that station.
+     */
+    if (nextPrediction.timeToStation <= 15) {
+        return {
+            lat: nextPrediction.station.lat,
+            lon: nextPrediction.station.lon,
+            positionType: 'station',
+            station: nextPrediction.station.name
+        };
+    }
+
+    /*
+     * Find the station immediately before the next predicted
+     * station on the selected route. This is the current section.
+     */
+    const previousRouteStation =
+        route.stations[
+            nextRouteStation.routeIndex - 1
+        ];
+
+    if (!previousRouteStation) {
+        return {
+            lat: nextPrediction.station.lat,
+            lon: nextPrediction.station.lon,
+            positionType: 'station',
+            station: nextPrediction.station.name
+        };
+    }
+
+    const startIndex =
+        previousRouteStation.pointIndex;
+
+    const endIndex =
+        nextRouteStation.pointIndex;
+
+    const start =
+        Math.min(startIndex, endIndex);
+
+    const end =
+        Math.max(startIndex, endIndex);
+
+    const section =
+        route.points.slice(
+            start,
+            end + 1
+        );
+
+    if (section.length < 2) {
+        return null;
+    }
+
+    let progress = 0;
+
+    if (
+        followingPrediction &&
+        followingPrediction.timeToStation >
+            nextPrediction.timeToStation
+    ) {
+        const timeBetweenStations =
+            followingPrediction.timeToStation -
+            nextPrediction.timeToStation;
+
+        progress =
+            1 -
+            (
+                nextPrediction.timeToStation /
+                (
+                    nextPrediction.timeToStation +
+                    timeBetweenStations
+                )
+            );
+    }
+
+    progress =
+        Math.max(
+            0,
+            Math.min(1, progress)
+        );
+
+    const scaledIndex =
+        progress * (section.length - 1);
+
+    const lowerIndex =
+        Math.floor(scaledIndex);
+
+    const upperIndex =
+        Math.min(
+            lowerIndex + 1,
+            section.length - 1
+        );
+
+    const localProgress =
+        scaledIndex - lowerIndex;
+
+    const pointA =
+        section[lowerIndex];
+
+    const pointB =
+        section[upperIndex];
+
+    const lon =
+        pointA[0] +
+        (
+            pointB[0] -
+            pointA[0]
+        ) * localProgress;
+
+    const lat =
+        pointA[1] +
+        (
+            pointB[1] -
+            pointA[1]
+        ) * localProgress;
+
+    return {
+        lat,
+        lon,
+        positionType: 'between',
+        between: [
+            previousRouteStation.station.name,
+            nextPrediction.station.name
+        ],
+        progress
+    };
+}
+
+function addElizabethTrainPositions(trains) {
+    return trains.map(train => ({
+        ...train,
+        position: getElizabethTrainPosition(train)
+    }));
+}
+
+// ==================== LIVE ELIZABETH TRAINS ====================
+
+let cachedElizabethTrains = [];
+let elizabethTrainsLastUpdate = null;
+
+async function updateElizabethTrains() {
+    try {
+        const key = process.env.TFL_APP_KEY;
+
+        if (!key) {
+            throw new Error('TFL_APP_KEY is missing');
+        }
+
+        const url =
+            `https://api.tfl.gov.uk/Line/${elizabethLine}/Arrivals?app_key=${encodeURIComponent(key)}`;
+
+        const arrivals = await fetchTflJson(url);
+
+        const vehicles = new Map();
+
+        for (const arrival of arrivals) {
+            if (!arrival.vehicleId) {
+                continue;
+            }
+
+            const vehicleId = arrival.vehicleId;
+
+            if (!vehicles.has(vehicleId)) {
+                vehicles.set(vehicleId, []);
+            }
+
+            vehicles.get(vehicleId).push(arrival);
+        }
+
+        cachedElizabethTrains = Array.from(
+            vehicles.entries()
+        ).map(([vehicleId, predictions]) => ({
+            vehicleId,
+            predictions
+        }));
+
+        elizabethTrainsLastUpdate =
+            new Date().toISOString();
+
+        console.log(
+            `Updated live Elizabeth trains: ${cachedElizabethTrains.length} vehicles`
+        );
+    } catch (error) {
+        console.error(
+            'Elizabeth train update failed:',
+            error.message
+        );
+    }
+}
+
+app.get('/api/elizabeth-trains', (req, res) => {
+    const trainsWithPositions =
+        addElizabethTrainPositions(cachedElizabethTrains);
+
+    res.json({
+        updatedAt: elizabethTrainsLastUpdate,
+        count: trainsWithPositions.length,
+        trains: trainsWithPositions
+    });
+});
+
 // ==================== LIVE TUBE TRAINS ====================
 
 let cachedTubeTrains = [];
@@ -729,8 +1211,11 @@ app.listen(PORT, async () => {
     await updateBuses();
     await updateTube();
     await updateElizabeth();
+    await updateElizabethTrains();
     await updateTubeTrains();
     setInterval(updateBuses, 15000);
     setInterval(updateTube, 60000);
+    setInterval(updateElizabeth, 60000);
+    setInterval(updateElizabethTrains, 30000);
     setInterval(updateTubeTrains, 30000);
 });
