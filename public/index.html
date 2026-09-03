@@ -28,25 +28,62 @@
         </div>
     </header>
 
-<nav id="transportTabs" aria-label="Transport mode">
-    <button class="transport-tab active" data-mode="bus" type="button">🚌 Bus</button>
-    <button class="transport-tab" data-mode="tube" type="button">🚇 Tube</button>
-    <button class="transport-tab" data-mode="elizabeth" type="button">🟣 Elizabeth</button>
-    <button class="transport-tab" data-mode="dlr" type="button">🟢 DLR</button>
-    <button class="transport-tab" data-mode="tram" type="button">🚊 Tram</button>
-    <button class="transport-tab" data-mode="overground" type="button">🔴 Overground</button>
-    <button class="transport-tab" data-mode="all" type="button">🌐 All</button>
-</nav>
+<section id="networkSelector" aria-labelledby="networkSelectorTitle">
+    <div class="network-selector-header">
+        <h2 id="networkSelectorTitle">What would you like to see?</h2>
+        <p>Select one or more network layers.</p>
+    </div>
 
-<div id="routeSearchContainer">
-    <input
-        id="routeSearch"
-        type="text"
-        placeholder="Search route (e.g. 127)"
-        autocomplete="off"
-    >
-    <button id="clearRouteSearch" type="button">Clear</button>
-</div>   
+    <div id="networkOptions" class="network-options">
+        <button class="network-option" data-layer="bus" type="button">
+            <span class="network-option-icon">🚌</span>
+            <span class="network-option-name">Bus</span>
+        </button>
+
+        <button class="network-option" data-layer="tube" type="button">
+            <span class="network-option-icon">🚇</span>
+            <span class="network-option-name">Tube</span>
+        </button>
+
+        <button class="network-option" data-layer="elizabeth" type="button">
+            <span class="network-option-icon">🟣</span>
+            <span class="network-option-name">Elizabeth line</span>
+        </button>
+
+        <button class="network-option disabled" type="button" disabled>
+            <span class="network-option-icon">🟢</span>
+            <span class="network-option-name">DLR</span>
+            <span class="network-option-status">Coming soon</span>
+        </button>
+
+        <button class="network-option disabled" type="button" disabled>
+            <span class="network-option-icon">🚊</span>
+            <span class="network-option-name">Tram</span>
+            <span class="network-option-status">Coming soon</span>
+        </button>
+
+        <button class="network-option disabled" type="button" disabled>
+            <span class="network-option-icon">🔴</span>
+            <span class="network-option-name">Overground</span>
+            <span class="network-option-status">Coming soon</span>
+        </button>
+
+        <button class="network-option disabled" type="button" disabled>
+            <span class="network-option-icon">🚆</span>
+            <span class="network-option-name">National Rail</span>
+            <span class="network-option-status">Coming soon</span>
+        </button>
+    </div>
+
+    <div class="network-selector-actions">
+        <button id="selectAllLayers" type="button">Select all available</button>
+        <button id="viewNetwork" class="primary-action" type="button">
+            View network
+        </button>
+    </div>
+</section>
+
+   
 
 <div id="busDetails" class="bus-details" hidden>
     <div class="bus-details-header">
@@ -63,7 +100,11 @@
     </div>
 </div>
  
-<div id="map"></div>
+<div id="map">
+    <div id="mapControls">
+        <button id="changeNetwork" type="button">🏠 Change Network</button>
+    </div>
+</div>
 
     <div id="loading">
         Loading live TfL vehicles...

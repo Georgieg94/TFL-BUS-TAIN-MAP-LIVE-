@@ -158,3 +158,182 @@ header p {
     line-height: 1;
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
 }
+
+/* ==================== NETWORK HOME SELECTOR ==================== */
+
+#networkSelector {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: min(760px, calc(100% - 32px));
+    max-height: calc(100% - 140px);
+    overflow-y: auto;
+    padding: 28px;
+    background: rgba(255, 255, 255, 0.98);
+    border-radius: 16px;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
+    z-index: 1100;
+}
+
+.network-selector-header {
+    text-align: center;
+    margin-bottom: 24px;
+}
+
+.network-selector-header h2 {
+    margin: 0;
+    font-size: 26px;
+    color: #1f2933;
+}
+
+.network-selector-header p {
+    margin: 8px 0 0;
+    font-size: 14px;
+    color: #667085;
+}
+
+.network-options {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.network-option {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-height: 72px;
+    padding: 14px 16px;
+    border: 2px solid #d0d7de;
+    border-radius: 12px;
+    background: #ffffff;
+    color: #1f2933;
+    cursor: pointer;
+    text-align: left;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.network-option:hover:not(:disabled) {
+    border-color: #005eb8;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.08);
+}
+
+.network-option.selected {
+    border-color: #005eb8;
+    background: #eef6ff;
+    box-shadow: 0 3px 10px rgba(0, 94, 184, 0.12);
+}
+
+.network-option.disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    background: #f6f8fa;
+}
+
+.network-option-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    min-width: 38px;
+    height: 38px;
+    font-size: 23px;
+}
+
+.network-option-name {
+    font-size: 16px;
+    font-weight: 700;
+}
+
+.network-option-status {
+    margin-left: auto;
+    font-size: 11px;
+    font-weight: 600;
+    color: #667085;
+}
+
+.network-selector-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-top: 22px;
+}
+
+#selectAllLayers {
+    border: none;
+    background: transparent;
+    color: #005eb8;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    padding: 8px 4px;
+}
+
+#selectAllLayers:hover {
+    text-decoration: underline;
+}
+
+#viewNetwork {
+    border: none;
+    border-radius: 9px;
+    background: #005eb8;
+    color: white;
+    padding: 11px 22px;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+#viewNetwork:hover {
+    background: #004b93;
+}
+
+@media (max-width: 600px) {
+    #networkSelector {
+        width: calc(100% - 20px);
+        padding: 20px;
+    }
+
+    .network-options {
+        grid-template-columns: 1fr;
+    }
+
+    .network-selector-actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    #selectAllLayers,
+    #viewNetwork {
+        width: 100%;
+    }
+}
+
+
+/* ==================== MAP CONTROLS ==================== */
+
+#mapControls {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    z-index: 1000;
+}
+
+#changeNetwork {
+    border: none;
+    border-radius: 9px;
+    background: #ffffff;
+    color: #1f2933;
+    padding: 10px 14px;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+#changeNetwork:hover {
+    background: #f3f4f6;
+}

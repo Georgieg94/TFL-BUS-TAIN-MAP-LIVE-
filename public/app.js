@@ -109,8 +109,11 @@ async function updateElizabethTrains() {
                 marker.setLatLng(latLng);
                 marker.setPopupContent(popup);
 
-                if (!map.hasLayer(marker)) {
-                    marker.addTo(map);
+                if (
+                    selectedLayers.has('elizabeth') &&
+                    !map.hasLayer(marker)
+                ) {
+                marker.addTo(map);
                 }
             } else {
                 const marker = L.marker(
@@ -122,7 +125,7 @@ async function updateElizabethTrains() {
                 );
 
                 marker.bindPopup(popup);
-                marker.addTo(map);
+                if (selectedLayers.has('elizabeth')) marker.addTo(map);
 
                 elizabethTrainMarkers.set(id, marker);
             }
@@ -187,7 +190,10 @@ async function updateTubeTrains() {
                 marker.setLatLng(latLng);
                 marker.setPopupContent(popup);
 
-                if (!map.hasLayer(marker)) {
+                if (
+                    selectedLayers.has('tube') &&
+                    !map.hasLayer(marker)
+                ) {
                     marker.addTo(map);
                 }
             } else {
@@ -200,7 +206,7 @@ async function updateTubeTrains() {
                 );
 
                 marker.bindPopup(popup);
-                marker.addTo(map);
+                if (selectedLayers.has('tube')) marker.addTo(map);
 
                 tubeTrainMarkers.set(id, marker);
             }
@@ -217,7 +223,6 @@ async function updateTubeTrains() {
     }
 }
 
-
 async function updateTube() {
     try {
         const response = await fetch('/api/tube');
@@ -229,8 +234,7 @@ async function updateTube() {
         const data = await response.json();
         const lines = data.lines || [];
 
-    const routeFilter = (document.getElementById('routeSearch')?.value || '').trim().toLowerCase();
-    const visibleTubeIds = new Set();
+        const visibleTubeIds = new Set();
 
         for (const line of lines) {
         const matchesSearch =
@@ -368,8 +372,6 @@ const busCluster = L.markerClusterGroup({
     showCoverageOnHover: false
 });
 
-map.addLayer(busCluster);
-
 async function updateBuses() {
     try {
         const response = await fetch('/api/live-buses');
@@ -387,13 +389,11 @@ const buses = data.buses || [];
 
         document.getElementById('loading').style.display = 'none';
 
-const routeFilter = (document.getElementById('routeSearch')?.value || '').trim().toLowerCase();
 const currentIds = new Set();
 
         buses.forEach(bus => {
             if (!bus.latitude || !bus.longitude) return;
 
-if (routeFilter && String(bus.route || '').toLowerCase() !== routeFilter) return;
 
             const id = bus.vehicleId || `${bus.latitude}-${bus.longitude}`;
             currentIds.add(id);
@@ -474,51 +474,24 @@ setInterval(updateTubeTrains, 30000);
 updateElizabethTrains();
 setInterval(updateElizabethTrains, 30000);
 
-const routeSearch = document.getElementById('routeSearch');
-const clearRouteSearch = document.getElementById('clearRouteSearch');
-
-routeSearch.addEventListener('input', () => {
-    if (selectedTransportMode === 'tube') {
-        updateTube();
-    } else {
-        updateBuses();
-    }
-});
-
-clearRouteSearch.addEventListener('click', () => {
-    routeSearch.value = '';
-    if (selectedTransportMode === 'tube') {
-    updateTube();
-} else {
-    updateBuses();
-}
-});
-
-
-const closeBusDetails = document.getElementById('closeBusDetails');
-
 closeBusDetails.addEventListener('click', () => {
     document.getElementById('busDetails').hidden = true;
 });
 
-// ==================== TRANSPORT MODE SELECTOR ====================
+// ==================== NETWORK LAYER SELECTOR ====================
 
-let selectedTransportMode = 'bus';
+const selectedLayers = new Set();
 
-const transportTabs = document.querySelectorAll('.transport-tab');
+const networkOptions = document.querySelectorAll('.network-option:not(:disabled)');
+const selectAllLayers = document.getElementById('selectAllLayers');
+const viewNetwork = document.getElementById('viewNetwork');
+const networkSelector = document.getElementById('networkSelector');
+const changeNetwork = document.getElementById('changeNetwork');
 
-function updateTransportMode() {
-    const showBuses =
-        selectedTransportMode === 'bus' ||
-        selectedTransportMode === 'all';
-
-    const showTube =
-        selectedTransportMode === 'tube' ||
-        selectedTransportMode === 'all';
-
-    const showElizabeth =
-        selectedTransportMode === 'elizabeth' ||
-        selectedTransportMode === 'all';
+function updateNetworkLayers() {
+    const showBuses = selectedLayers.has('bus');
+    const showTube = selectedLayers.has('tube');
+    const showElizabeth = selectedLayers.has('elizabeth');
 
     if (showBuses) {
         if (!map.hasLayer(busCluster)) {
@@ -542,19 +515,19 @@ function updateTransportMode() {
         }
     });
 
-if (elizabethLayer) {
-    if (showElizabeth) {
-        if (!map.hasLayer(elizabethLayer)) {
-            map.addLayer(elizabethLayer);
-        }
-    } else {
-        if (map.hasLayer(elizabethLayer)) {
-            map.removeLayer(elizabethLayer);
+    if (elizabethLayer) {
+        if (showElizabeth) {
+            if (!map.hasLayer(elizabethLayer)) {
+                map.addLayer(elizabethLayer);
+            }
+        } else {
+            if (map.hasLayer(elizabethLayer)) {
+                map.removeLayer(elizabethLayer);
+            }
         }
     }
-}
 
-        tubeTrainMarkers.forEach(marker => {
+    tubeTrainMarkers.forEach(marker => {
         if (showTube) {
             if (!map.hasLayer(marker)) {
                 map.addLayer(marker);
@@ -578,32 +551,44 @@ if (elizabethLayer) {
         }
     });
 
-
-transportTabs.forEach(tab => {
-        tab.classList.toggle(
-            'active',
-            tab.dataset.mode === selectedTransportMode
+    networkOptions.forEach(option => {
+        option.classList.toggle(
+            'selected',
+            selectedLayers.has(option.dataset.layer)
         );
     });
-
-    const routeSearch = document.getElementById('routeSearch');
-
-    if (selectedTransportMode === 'bus') {
-        routeSearch.placeholder = 'Search bus route (e.g. 127)';
-    } else if (selectedTransportMode === 'tube') {
-        routeSearch.placeholder = 'Search Tube line or station';
-    } else if (selectedTransportMode === 'all') {
-        routeSearch.placeholder = 'Search transport';
-    } else {
-        routeSearch.placeholder = `Search ${selectedTransportMode}`;
-    }
 }
 
-transportTabs.forEach(tab => {
-    tab.addEventListener('click', () => {
-        selectedTransportMode = tab.dataset.mode;
-        updateTransportMode();
+networkOptions.forEach(option => {
+    option.addEventListener('click', () => {
+        const layer = option.dataset.layer;
+
+        if (selectedLayers.has(layer)) {
+            selectedLayers.delete(layer);
+        } else {
+            selectedLayers.add(layer);
+        }
+
+        updateNetworkLayers();
     });
 });
 
-updateTransportMode();
+selectAllLayers.addEventListener('click', () => {
+    networkOptions.forEach(option => {
+        selectedLayers.add(option.dataset.layer);
+    });
+
+    updateNetworkLayers();
+});
+
+viewNetwork.addEventListener('click', () => {
+    networkSelector.hidden = true;
+    updateNetworkLayers();
+});
+
+changeNetwork.addEventListener('click', () => {
+    networkSelector.hidden = false;
+});
+
+updateNetworkLayers();
+
