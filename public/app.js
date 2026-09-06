@@ -47,6 +47,13 @@ Object.keys(tubeLineColours).forEach(lineId => {
 });
 const elizabethTrainMarkers = new Map();
 let elizabethData = null;
+const elizabethLineSelect = document.getElementById('elizabethLineSelect');
+let selectedElizabethStation = '';
+
+elizabethLineSelect.addEventListener('change', () => {
+    selectedElizabethStation = elizabethLineSelect.value;
+    updateElizabethTrains();
+});
 
 function createTubeTrainIcon(lineId) {
     const lineColours = {
@@ -116,6 +123,10 @@ async function updateElizabethTrains() {
 
             const prediction = train.predictions?.[0];
 
+            const matchesSelectedStation =
+                !selectedElizabethStation ||
+                prediction?.stationName === selectedElizabethStation;
+
             const popup = `
                 <div class="tube-train-popup">
                     <strong>🟣 Elizabeth line</strong><br>
@@ -134,9 +145,16 @@ async function updateElizabethTrains() {
 
                 if (
                     selectedLayers.has('elizabeth') &&
+                    matchesSelectedStation &&
                     !map.hasLayer(marker)
                 ) {
-                marker.addTo(map);
+                    marker.addTo(map);
+                } else if (
+                    (!selectedLayers.has('elizabeth') ||
+                     !matchesSelectedStation) &&
+                    map.hasLayer(marker)
+                ) {
+                    map.removeLayer(marker);
                 }
             } else {
                 const marker = L.marker(
@@ -148,7 +166,9 @@ async function updateElizabethTrains() {
                 );
 
                 marker.bindPopup(popup);
-                if (selectedLayers.has('elizabeth')) marker.addTo(map);
+                if (selectedLayers.has('elizabeth') && matchesSelectedStation) {
+                    marker.addTo(map);
+                }
 
                 elizabethTrainMarkers.set(id, marker);
             }
@@ -269,65 +289,97 @@ async function updateTube() {
         const data = await response.json();
         const lines = data.lines || [];
 
-        const visibleTubeIds = new Set();
-
         for (const line of lines) {
-              const matchesSelectedLine =
-                  !selectedTubeLine ||
-                  line.id === selectedTubeLine;
+            const matchesSelectedLine =
+                !selectedTubeLine ||
+                line.id === selectedTubeLine;
 
-              if (!matchesSelectedLine) {
-                  if (tubeLayers.has(line.id)) {
-                      map.removeLayer(tubeLayers.get(line.id));
-                  }
-                  continue;
-              }
+            if (!line.lineStrings) continue;
 
-              visibleTubeIds.add(line.id);
-
-    if (!line.lineStrings) continue;
-
-            let coordinates = [];
+            const paths = [];
 
             for (const lineString of line.lineStrings) {
                 try {
-                    const parsed = typeof lineString === 'string'
-                        ? JSON.parse(lineString)
-                        : lineString;
+                    const parsed =
+                        typeof lineString === 'string'
+                            ? JSON.parse(lineString)
+                            : lineString;
 
-                    if (Array.isArray(parsed)) {
-                        coordinates.push(...(Array.isArray(parsed[0]) && Array.isArray(parsed[0][0]) ? parsed[0] : parsed));
+                    let coordinates = parsed;
+
+                    if (
+                        Array.isArray(parsed) &&
+                        Array.isArray(parsed[0]) &&
+                        Array.isArray(parsed[0][0])
+                    ) {
+                        coordinates = parsed[0];
+                    }
+
+                    if (!Array.isArray(coordinates)) continue;
+
+                    const latLngs = coordinates
+                        .filter(
+                            point =>
+                                Array.isArray(point) &&
+                                point.length >= 2
+                        )
+                        .map(point => [point[1], point[0]]);
+
+                    if (latLngs.length) {
+                        paths.push(latLngs);
                     }
                 } catch (error) {
-                    console.error(`Unable to parse ${line.name} geometry`, error);
+                    console.error(
+                        `Unable to parse ${line.name} geometry`,
+                        error
+                    );
                 }
             }
 
-            if (!coordinates.length) continue;
+            if (!paths.length) continue;
 
-            const latLngs = coordinates
-                .filter(point => Array.isArray(point) && point.length >= 2)
-                .map(point => [point[1], point[0]]);
+            const shouldShow =
+                selectedLayers.has('tube') &&
+                matchesSelectedLine;
 
-            if (!latLngs.length) continue;
-if (tubeLayers.has(line.id)) {
-    const layer = tubeLayers.get(line.id);
-    layer.setLatLngs(latLngs);
-    layer.setStyle({
-        color: tubeLineColours[line.id] || '#666666',
-        weight: 4,
-        opacity: 0.85
-    });
-            if (map.hasLayer(layer) === false) {
-                map.addLayer(layer);
-            }
+            if (tubeLayers.has(line.id)) {
+                const layer = tubeLayers.get(line.id);
+
+                layer.clearLayers();
+
+                for (const path of paths) {
+                    L.polyline(path, {
+                        color: tubeLineColours[line.id] || '#666666',
+                        weight: 4,
+                        opacity: 0.85
+                    }).addTo(layer);
+                }
+
+                if (shouldShow) {
+                    if (!map.hasLayer(layer)) {
+                        map.addLayer(layer);
+                    }
+                } else {
+                    if (map.hasLayer(layer)) {
+                        map.removeLayer(layer);
+                    }
+                }
             } else {
-const layer = L.polyline(latLngs, {
-    color: tubeLineColours[line.id] || '#666666',
-    weight: 4,
-    opacity: 0.85
-}).addTo(map);
+                const layer = L.layerGroup();
+
+                for (const path of paths) {
+                    L.polyline(path, {
+                        color: tubeLineColours[line.id] || '#666666',
+                        weight: 4,
+                        opacity: 0.85
+                    }).addTo(layer);
+                }
+
                 tubeLayers.set(line.id, layer);
+
+                if (shouldShow) {
+                    map.addLayer(layer);
+                }
             }
         }
     } catch (error) {
@@ -345,6 +397,37 @@ async function updateElizabethLine() {
 
         const data = await response.json();
         elizabethData = data.line;
+
+        if (elizabethData?.stations && elizabethLineSelect) {
+            const currentStation = elizabethLineSelect.value;
+
+            elizabethLineSelect.innerHTML =
+                '<option value="">All Elizabeth stations</option>';
+
+            const stations = [...elizabethData.stations]
+                .sort((a, b) =>
+                    String(a.name || '').localeCompare(
+                        String(b.name || '')
+                    )
+                );
+
+            for (const station of stations) {
+                const option = document.createElement('option');
+                option.value = station.name || '';
+                option.textContent = station.name || 'Unknown station';
+                elizabethLineSelect.appendChild(option);
+            }
+
+            if (
+                stations.some(
+                    station => station.name === currentStation
+                )
+            ) {
+                elizabethLineSelect.value = currentStation;
+            } else {
+                selectedElizabethStation = '';
+            }
+        }
 
         if (!elizabethData?.lineStrings) {
             return;
