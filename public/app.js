@@ -8,6 +8,11 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 }).addTo(map);
 
 const tubeLayers = new Map();
+
+const tramLayer = L.featureGroup();
+const tramTrainMarkers = new Map();
+let tramData = null;
+
 const tubeLineSelect = document.getElementById('tubeLineSelect');
 let selectedTubeLine = '';
 const tubeLineColours = {
@@ -84,6 +89,16 @@ function createElizabethTrainIcon() {
     return L.divIcon({
         className: 'tube-train-marker',
         html: `<div class="tube-train-icon" style="border-color: ${elizabethLineColour};">🚇</div>`,
+        iconSize: [34, 34],
+        iconAnchor: [17, 17]
+    });
+}
+
+
+function createTramTrainIcon() {
+    return L.divIcon({
+        className: 'tram-train-marker',
+        html: `<div class="tram-train-icon" style="border-color: #00A4A7;">🚊</div>`,
         iconSize: [34, 34],
         iconAnchor: [17, 17]
     });
@@ -384,6 +399,176 @@ async function updateTube() {
         }
     } catch (error) {
         console.error('Unable to update Tube network:', error);
+    }
+}
+
+async function updateTramTrains() {
+    try {
+        const response = await fetch('/api/tram-trains');
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+        const trains = data.trains || [];
+        const currentIds = new Set();
+
+        for (const train of trains) {
+            const position = train.position;
+
+            if (
+                !position ||
+                typeof position.lat !== 'number' ||
+                typeof position.lon !== 'number'
+            ) {
+                continue;
+            }
+
+            const id = String(train.vehicleId);
+
+            currentIds.add(id);
+
+            const latLng = [
+                position.lat,
+                position.lon
+            ];
+
+            const between = position.between?.join(' → ') || 'Unknown';
+
+            const popup = `
+                <div class="tram-train-popup">
+                    <strong>🚊 Tram ${train.vehicleId || 'Unknown'}</strong><br>
+                    Destination: ${position.destinationName || 'Unknown'}<br>
+                    Direction: ${position.direction || 'Unknown'}<br>
+                    Between: ${between}<br>
+                    Position: ${position.positionType || 'Unknown'}
+                </div>
+            `;
+
+            if (tramTrainMarkers.has(id)) {
+                const marker = tramTrainMarkers.get(id);
+
+                marker.setLatLng(latLng);
+                marker.setPopupContent(popup);
+
+                if (
+                    selectedLayers.has('tram') &&
+                    !map.hasLayer(marker)
+                ) {
+                    marker.addTo(map);
+                } else if (
+                    !selectedLayers.has('tram') &&
+                    map.hasLayer(marker)
+                ) {
+                    map.removeLayer(marker);
+                }
+            } else {
+                const marker = L.marker(
+                    latLng,
+                    {
+                        icon: createTramTrainIcon(),
+                        title: `Tram ${train.vehicleId || ''}`
+                    }
+                );
+
+                marker.bindPopup(popup);
+
+                if (selectedLayers.has('tram')) {
+                    marker.addTo(map);
+                }
+
+                tramTrainMarkers.set(id, marker);
+            }
+        }
+
+        for (const [id, marker] of tramTrainMarkers) {
+            if (!currentIds.has(id)) {
+                map.removeLayer(marker);
+                tramTrainMarkers.delete(id);
+            }
+        }
+    } catch (error) {
+        console.error(
+            'Unable to update live Tram vehicles:',
+            error
+        );
+    }
+}
+
+async function updateTram() {
+    try {
+        const response = await fetch('/api/tram');
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+        const line = data.line;
+
+        if (!line?.lineStrings) {
+            return;
+        }
+
+        tramData = line;
+        tramLayer.clearLayers();
+
+        for (const lineString of line.lineStrings) {
+            try {
+                const parsed =
+                    typeof lineString === 'string'
+                        ? JSON.parse(lineString)
+                        : lineString;
+
+                let coordinates = parsed;
+
+                if (
+                    Array.isArray(parsed) &&
+                    Array.isArray(parsed[0]) &&
+                    Array.isArray(parsed[0][0])
+                ) {
+                    coordinates = parsed[0];
+                }
+
+                if (!Array.isArray(coordinates)) {
+                    continue;
+                }
+
+                const latLngs = coordinates
+                    .filter(
+                        point =>
+                            Array.isArray(point) &&
+                            point.length >= 2
+                    )
+                    .map(point => [point[1], point[0]]);
+
+                if (!latLngs.length) {
+                    continue;
+                }
+
+                L.polyline(latLngs, {
+                    color: '#00A4A7',
+                    weight: 5,
+                    opacity: 0.9
+                }).addTo(tramLayer);
+            } catch (error) {
+                console.error(
+                    'Unable to parse Tram geometry',
+                    error
+                );
+            }
+        }
+
+        if (selectedLayers.has('tram')) {
+            if (!map.hasLayer(tramLayer)) {
+                map.addLayer(tramLayer);
+            }
+        } else if (map.hasLayer(tramLayer)) {
+            map.removeLayer(tramLayer);
+        }
+    } catch (error) {
+        console.error('Unable to update Tram network:', error);
     }
 }
 
@@ -737,8 +922,14 @@ setInterval(updateTube, 60000);
 updateElizabethLine();
 setInterval(updateElizabethLine, 60000);
 
+updateTram();
+setInterval(updateTram, 60000);
+
 updateTubeTrains();
 setInterval(updateTubeTrains, 30000);
+
+updateTramTrains();
+setInterval(updateTramTrains, 30000);
 
 updateElizabethTrains();
 setInterval(updateElizabethTrains, 30000);
@@ -761,6 +952,7 @@ function updateNetworkLayers() {
     const showBuses = selectedLayers.has('bus');
     const showTube = selectedLayers.has('tube');
     const showElizabeth = selectedLayers.has('elizabeth');
+const showTram = selectedLayers.has('tram');
 
       document.getElementById('busRouteFilter').hidden = !showBuses;
       document.getElementById('tubeLineFilter').hidden = !showTube;
@@ -814,7 +1006,31 @@ function updateNetworkLayers() {
         }
     }
 
-      tubeTrainMarkers.forEach((marker, id) => {
+      if (tramLayer) {
+      if (showTram) {
+          if (!map.hasLayer(tramLayer)) {
+              map.addLayer(tramLayer);
+          }
+      } else {
+          if (map.hasLayer(tramLayer)) {
+              map.removeLayer(tramLayer);
+          }
+      }
+  }
+
+  tramTrainMarkers.forEach(marker => {
+    if (showTram) {
+        if (!map.hasLayer(marker)) {
+            map.addLayer(marker);
+        }
+    } else {
+        if (map.hasLayer(marker)) {
+            map.removeLayer(marker);
+        }
+    }
+});
+
+tubeTrainMarkers.forEach((marker, id) => {
           const trainLineId = String(id).split('-')[0];
           const shouldShow =
               showTube &&

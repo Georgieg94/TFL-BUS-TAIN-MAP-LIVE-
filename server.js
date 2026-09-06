@@ -40,6 +40,8 @@ let tubeLastUpdate = null;
 
 let cachedElizabeth = null;
 let elizabethLastUpdate = null;
+let cachedTram = null;
+let tramLastUpdate = null;
 
 function fetchTflJson(url) {
     return new Promise((resolve, reject) => {
@@ -103,6 +105,45 @@ async function updateTube() {
         console.log(`Updated Tube network: ${results.length} lines`);
     } catch (error) {
         console.error('TfL Tube update failed:', error.message);
+    }
+}
+
+async function updateTram() {
+    try {
+        const key = process.env.TFL_APP_KEY;
+
+        if (!key) {
+            throw new Error('TFL_APP_KEY is missing');
+        }
+
+        const [route, status] = await Promise.all([
+            fetchTflJson(
+                `https://api.tfl.gov.uk/Line/tram/Route/Sequence/all?app_key=${encodeURIComponent(key)}`
+            ),
+            fetchTflJson(
+                `https://api.tfl.gov.uk/Line/tram/Status?app_key=${encodeURIComponent(key)}`
+            )
+        ]);
+
+        cachedTram = {
+            id: 'tram',
+            name: route.lineName,
+            mode: 'tram',
+            lineStrings: route.lineStrings || [],
+            stations: route.stations || [],
+            status: status[0]?.lineStatuses || []
+        };
+
+        tramLastUpdate = new Date().toISOString();
+
+        console.log(
+            `Updated Tram network: ${cachedTram.stations.length} stops`
+        );
+    } catch (error) {
+        console.error(
+            'Tram network update failed:',
+            error.message
+        );
     }
 }
 
@@ -264,6 +305,13 @@ app.get('/api/elizabeth', (req, res) => {
     res.json({
         updatedAt: elizabethLastUpdate,
         line: cachedElizabeth
+    });
+});
+
+app.get('/api/tram', (req, res) => {
+    res.json({
+        updatedAt: tramLastUpdate,
+        line: cachedTram
     });
 });
 
@@ -1026,6 +1074,384 @@ function addElizabethTrainPositions(trains) {
     }));
 }
 
+// ==================== LIVE TRAM VEHICLE POSITIONING ====================
+
+function normaliseTramStationName(name) {
+    return String(name || '')
+        .replace(/\s+Tram Stop$/i, '')
+        .trim()
+        .toLowerCase();
+}
+
+function getTramStationMap() {
+    const stations = cachedTram?.stations || [];
+    const map = new Map();
+
+    for (const station of stations) {
+        if (!station?.name) continue;
+
+        map.set(
+            normaliseTramStationName(station.name),
+            station
+        );
+    }
+
+    return map;
+}
+
+function getTramVehiclePosition(predictions) {
+    if (!cachedTram?.stations?.length || !predictions?.length) {
+        return null;
+    }
+
+    const stationMap = getTramStationMap();
+
+    const ordered = [...predictions]
+        .filter(
+            prediction =>
+                prediction?.stationName &&
+                Number.isFinite(Number(prediction.timeToStation))
+        )
+        .sort(
+            (a, b) =>
+                Number(a.timeToStation) -
+                Number(b.timeToStation)
+        );
+
+    if (!ordered.length) {
+        return null;
+    }
+
+    const nextPrediction = ordered[0];
+    const nextStation = stationMap.get(
+        normaliseTramStationName(nextPrediction.stationName)
+    );
+
+    if (!nextStation) {
+        return null;
+    }
+
+    if (ordered.length === 1) {
+        return {
+            lat: Number(nextStation.lat),
+            lon: Number(nextStation.lon),
+            positionType: 'station',
+            stationName: nextStation.name,
+            destinationName: nextPrediction.destinationName || null,
+            direction: nextPrediction.direction || null
+        };
+    }
+
+    const followingPrediction = ordered[1];
+    const followingStation = stationMap.get(
+        normaliseTramStationName(followingPrediction.stationName)
+    );
+
+    if (!followingStation) {
+        return {
+            lat: Number(nextStation.lat),
+            lon: Number(nextStation.lon),
+            positionType: 'station',
+            stationName: nextStation.name,
+            destinationName: nextPrediction.destinationName || null,
+            direction: nextPrediction.direction || null
+        };
+    }
+
+    const nextTime = Number(nextPrediction.timeToStation);
+    const followingTime = Number(followingPrediction.timeToStation);
+
+    const timeBetweenStations = followingTime - nextTime;
+
+    let progress = 0;
+
+    if (timeBetweenStations > 0) {
+        progress = 1 - (
+            nextTime /
+            (nextTime + timeBetweenStations)
+        );
+    }
+
+    progress = Math.max(0, Math.min(1, progress));
+
+    const lineStrings = cachedTram.lineStrings || [];
+
+    let bestPath = null;
+    let bestStartDistance = Infinity;
+    let bestEndDistance = Infinity;
+
+    for (const lineString of lineStrings) {
+        try {
+            const parsed =
+                typeof lineString === 'string'
+                    ? JSON.parse(lineString)
+                    : lineString;
+
+            let coordinates = parsed;
+
+            if (
+                Array.isArray(parsed) &&
+                Array.isArray(parsed[0]) &&
+                Array.isArray(parsed[0][0])
+            ) {
+                coordinates = parsed[0];
+            }
+
+            if (!Array.isArray(coordinates) || coordinates.length < 2) {
+                continue;
+            }
+
+            let startIndex = -1;
+            let endIndex = -1;
+
+            let startBest = Infinity;
+            let endBest = Infinity;
+
+            for (let i = 0; i < coordinates.length; i++) {
+                const point = coordinates[i];
+
+                if (!Array.isArray(point) || point.length < 2) {
+                    continue;
+                }
+
+                const lon = Number(point[0]);
+                const lat = Number(point[1]);
+
+                const startDistance =
+                    Math.pow(lat - Number(nextStation.lat), 2) +
+                    Math.pow(lon - Number(nextStation.lon), 2);
+
+                const endDistance =
+                    Math.pow(lat - Number(followingStation.lat), 2) +
+                    Math.pow(lon - Number(followingStation.lon), 2);
+
+                if (startDistance < startBest) {
+                    startBest = startDistance;
+                    startIndex = i;
+                }
+
+                if (endDistance < endBest) {
+                    endBest = endDistance;
+                    endIndex = i;
+                }
+            }
+
+            if (
+                startIndex >= 0 &&
+                endIndex >= 0 &&
+                startIndex < endIndex
+            ) {
+                const totalEndpointDistance =
+                    startBest + endBest;
+
+                if (totalEndpointDistance < bestStartDistance + bestEndDistance) {
+                    bestPath = coordinates.slice(
+                        startIndex,
+                        endIndex + 1
+                    );
+
+                    bestStartDistance = startBest;
+                    bestEndDistance = endBest;
+                }
+            }
+        } catch (error) {
+            console.error(
+                'Unable to parse Tram geometry:',
+                error.message
+            );
+        }
+    }
+
+    if (!bestPath || bestPath.length < 2) {
+        const lat =
+            Number(nextStation.lat) +
+            (
+                Number(followingStation.lat) -
+                Number(nextStation.lat)
+            ) * progress;
+
+        const lon =
+            Number(nextStation.lon) +
+            (
+                Number(followingStation.lon) -
+                Number(nextStation.lon)
+            ) * progress;
+
+        return {
+            lat,
+            lon,
+            positionType: 'between',
+            between: [
+                nextStation.name,
+                followingStation.name
+            ],
+            progress,
+            positionSource: 'station-interpolation',
+            destinationName: nextPrediction.destinationName || null,
+            direction: nextPrediction.direction || null
+        };
+    }
+
+    const segmentLengths = [];
+    let totalLength = 0;
+
+    for (let i = 1; i < bestPath.length; i++) {
+        const lon1 = Number(bestPath[i - 1][0]);
+        const lat1 = Number(bestPath[i - 1][1]);
+        const lon2 = Number(bestPath[i][0]);
+        const lat2 = Number(bestPath[i][1]);
+
+        const length = Math.hypot(
+            lat2 - lat1,
+            lon2 - lon1
+        );
+
+        segmentLengths.push(length);
+        totalLength += length;
+    }
+
+    if (totalLength <= 0) {
+        return null;
+    }
+
+    const targetDistance = totalLength * progress;
+
+    let travelled = 0;
+
+    for (let i = 0; i < segmentLengths.length; i++) {
+        const segmentLength = segmentLengths[i];
+
+        if (travelled + segmentLength >= targetDistance) {
+            const remaining = targetDistance - travelled;
+            const segmentProgress =
+                segmentLength > 0
+                    ? remaining / segmentLength
+                    : 0;
+
+            const start = bestPath[i];
+            const end = bestPath[i + 1];
+
+            const lon =
+                Number(start[0]) +
+                (
+                    Number(end[0]) -
+                    Number(start[0])
+                ) * segmentProgress;
+
+            const lat =
+                Number(start[1]) +
+                (
+                    Number(end[1]) -
+                    Number(start[1])
+                ) * segmentProgress;
+
+            return {
+                lat,
+                lon,
+                positionType: 'between',
+                between: [
+                    nextStation.name,
+                    followingStation.name
+                ],
+                progress,
+                positionSource: 'tram-route-geometry',
+                destinationName: nextPrediction.destinationName || null,
+                direction: nextPrediction.direction || null
+            };
+        }
+
+        travelled += segmentLength;
+    }
+
+    const last = bestPath[bestPath.length - 1];
+
+    return {
+        lat: Number(last[1]),
+        lon: Number(last[0]),
+        positionType: 'between',
+        between: [
+            nextStation.name,
+            followingStation.name
+        ],
+        progress: 1,
+        positionSource: 'tram-route-geometry',
+        destinationName: nextPrediction.destinationName || null,
+        direction: nextPrediction.direction || null
+    };
+}
+function addTramVehiclePositions(vehicles) {
+    return vehicles.map(vehicle => ({
+        ...vehicle,
+        position: getTramVehiclePosition(vehicle.predictions)
+    }));
+}
+
+// ==================== LIVE TRAM VEHICLES ====================
+
+let cachedTramVehicles = [];
+let tramVehiclesLastUpdate = null;
+
+async function updateTramVehicles() {
+    try {
+        const key = process.env.TFL_APP_KEY;
+
+        if (!key) {
+            throw new Error('TFL_APP_KEY is missing');
+        }
+
+        const url =
+            `https://api.tfl.gov.uk/Line/tram/Arrivals?app_key=${encodeURIComponent(key)}`;
+
+        const arrivals = await fetchTflJson(url);
+
+        const vehicles = new Map();
+
+        for (const arrival of arrivals) {
+            if (!arrival.vehicleId) {
+                continue;
+            }
+
+            const vehicleId = arrival.vehicleId;
+
+            if (!vehicles.has(vehicleId)) {
+                vehicles.set(vehicleId, []);
+            }
+
+            vehicles.get(vehicleId).push(arrival);
+        }
+
+        cachedTramVehicles = Array.from(
+            vehicles.entries()
+        ).map(([vehicleId, predictions]) => ({
+            vehicleId,
+            predictions
+        }));
+
+        tramVehiclesLastUpdate =
+            new Date().toISOString();
+
+        console.log(
+            `Updated live Tram vehicles: ${cachedTramVehicles.length} vehicles`
+        );
+    } catch (error) {
+        console.error(
+            'Tram vehicle update failed:',
+            error.message
+        );
+    }
+}
+
+app.get('/api/tram-trains', (req, res) => {
+    const vehiclesWithPositions =
+        addTramVehiclePositions(cachedTramVehicles);
+
+    res.json({
+        updatedAt: tramVehiclesLastUpdate,
+        count: vehiclesWithPositions.length,
+        trains: vehiclesWithPositions
+    });
+});
+
 // ==================== LIVE ELIZABETH TRAINS ====================
 
 let cachedElizabethTrains = [];
@@ -1238,11 +1664,15 @@ app.listen(PORT, async () => {
     await updateBuses();
     await updateTube();
     await updateElizabeth();
+    await updateTram();
+    await updateTramVehicles();
     await updateElizabethTrains();
     await updateTubeTrains();
     setInterval(updateBuses, 15000);
     setInterval(updateTube, 60000);
     setInterval(updateElizabeth, 60000);
+    setInterval(updateTram, 60000);
+    setInterval(updateTramVehicles, 30000);
     setInterval(updateElizabethTrains, 30000);
     setInterval(updateTubeTrains, 30000);
 });
